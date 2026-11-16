@@ -4,7 +4,7 @@ import bnbemu.packet.*
 import bnbemu.server.*
 /** Verified EN op267 body: E4(product id), E4(option), E1(payment mode). */
 val ShopPurchaseReq = PKTHandler { c ->
-    val user = c.users.firstOrNull() ?: return@PKTHandler
+    val user = c.users.getOrNull(c.shopPlayerIndex) ?: return@PKTHandler
     if (readableBytes() != 9) { c send ShopPurchaseResult(false); return@PKTHandler }
     val productId = Decode4
     val option = Decode4
@@ -18,8 +18,11 @@ val ShopPurchaseReq = PKTHandler { c ->
         user.lucci = result.account.lucci
         c send ShopPurchaseResult(success)
         if (success) {
-            c send UserDynamicInfo(0, user.lucci)
-            c send UserItemUpdate(itemId = result.itemId, quantity = result.account.items.getValue(result.itemId))
+            c send UserDynamicInfo(c.shopPlayerIndex, user.lucci)
+            // S202 success already creates/updates the purchased stock through
+            // native 66B4ED -> 66A017 -> 65D281. A second S274 stock insertion
+            // leaves a duplicate in the open shop/profile until a full refresh.
+            // Login/list sync still sends authoritative ownership separately.
         }
         println("[LocalPurchase] product=$productId status=${result.status} balance=${user.lucci}")
     } catch (e: java.io.IOException) {

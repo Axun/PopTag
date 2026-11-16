@@ -98,7 +98,7 @@ fun launchLocalMatch(c: bnbemu.netty.ClientSocket, mapId: Int, themeId: Int, rep
     println("StartGame. activeSlots=$activeSlots (AI=${activeSlots.count { Room.slots[it].isAI }})")
 
     if (replenish) c.users.firstOrNull()?.let { user ->
-        bnbemu.server.needleStockPackets().forEach { c send it }   // 先建持有物, op198 热键穿戴的前置
+        bnbemu.server.needleStockPackets(c.users.size).forEach { c send it }   // 先建持有物, op198 热键穿戴的前置
         c send bnbemu.server.localUserInventory(user, practice = true, inGame = true)
     }
     c.send(
@@ -114,6 +114,11 @@ fun launchLocalMatch(c: bnbemu.netty.ClientSocket, mapId: Int, themeId: Int, rep
             useSelectedColors = Room.localGameMode == 15,
         ),
         PracticeStartInfo(bombStyle = bnbemu.server.localBombStyle(c.users.firstOrNull()), user = c.users.firstOrNull()),
+    )
+    c.users.getOrNull(1)?.let { second ->
+        c send PracticeStartInfo(bombStyle=bnbemu.server.localBombStyle(second),user=second,slot=1)
+    }
+    c.send(
         // Keep the stage-clear clock and server deadline on the same time limit.
         PracticeBoard(timeLimitSec = when (Room.localGameMode) {
             14 -> bnbemu.packet.MONSTER_TIME_LIMIT_SEC

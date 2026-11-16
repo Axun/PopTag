@@ -10,7 +10,10 @@ import org.junit.jupiter.api.Test
 
 class ChineseContentTest {
     @Test fun extraProductsAndMonsterMapsPreserveLegacyIndexes() {
-        assertTrue(ShopCatalog.DEFAULT_ITEMS.size < 995)
+        // Native 670976 reads an unsigned 16-bit count and allocates each
+        // product dynamically (6709A6..670A2C); 995 was an old batch budget.
+        assertTrue(ShopCatalog.DEFAULT_ITEMS.size in 1..65535)
+        assertTrue(ShopCatalog.buildBlock(ShopCatalog.DEFAULT_ITEMS).size < 0xFFFFFF)
         assertEquals(ShopCatalog.DEFAULT_ITEMS.size, ShopCatalog.DEFAULT_ITEMS.map(ShopCatalog::appearanceKey).distinct().size)
         assertFalse(ShopCatalog.DEFAULT_ITEMS.any { it.itemId == 930000006 })
         val definitionBlock = ItemDef.buildBlock(ItemDef.DEFAULT_ITEMS)
@@ -22,7 +25,7 @@ class ChineseContentTest {
         before.zip(after.take(before.size)).forEach { (original, ported) ->
             assertEquals(original, ported.copy(sortOrder = original.sortOrder), original.name)
         }
-        assertEquals(75, after.size - before.size)
+        assertEquals(98, after.size - before.size)
         assertTrue(after.map { it.name }.containsAll(listOf("Monster37", "Monster38", "Monster39")))
         assertEquals(after.size, bnbemu.handler.room.loadMapIdTable().size)
     }

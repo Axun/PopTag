@@ -6,14 +6,27 @@ package bnbemu.packet
  */
 internal fun refreshShopHome(items: List<ShopItemEntry>): List<ShopItemEntry> {
     val definitions = ItemDef.DEFAULT_ITEMS.associateBy { it.itemId }
-    val newBubbles = items.filter { it.itemId in 950_000_000 until 960_000_000 && definitions[it.itemId]?.category == 14 }.take(3)
-    val newDecorations = items.filter { it.itemId in 950_000_000 until 960_000_000 && definitions[it.itemId]?.category == 12 }.take(3)
-    val new = (newBubbles + newDecorations).map { it.prodId }
-    val recommended = listOf(45,119,125).mapNotNull { style -> items.firstOrNull {
-        definitions[it.itemId]?.let { d -> d.category == 14 && d.param == style } == true
-    } } + items.filter { it.itemId in 940_000_000 until 950_000_000 && it.prodId !in new }.take(1)
+    fun roomDecoration(part: Int, style: Int) = items.firstOrNull { item ->
+        definitions[item.itemId]?.let {
+            it.category==10 && it.targetCharId==part && it.skinId==style
+        } == true
+    }
+    // Classic bubbles: 巧克力、七彩、绿色西瓜、奶牛、绿光妖精、鬼眼.
+    val fresh = listOf(41,14,9,27,32,28).map { style ->
+        checkNotNull(items.firstOrNull { item ->
+            definitions[item.itemId]?.let { it.category==14 && it.param==style } == true
+        }) { "Missing home classic bubble $style" }
+    }
+    val new = fresh.map { it.prodId }
+    val recommended = listOf(5021,5022,5025,5026).mapNotNull { roomDecoration(1,it) }
+    // Additional recommendation-list products follow the four home cards.
+    // These original regional backgrounds have no matching flag/border bundle.
+    val regionalRecommendations = listOf(5023,5024,5027).map { style ->
+        checkNotNull(roomDecoration(1,style)) { "Missing regional background $style" }
+    }
+    check(new.size==6 && recommended.size==4) { "Home bubbles and backgrounds must resolve to purchasable products" }
     val rank = (new.mapIndexed { i,id -> id to -2000L+i } +
-        recommended.mapIndexed { i,item -> item.prodId to -11000L+i }).toMap()
+        (recommended + regionalRecommendations).mapIndexed { i,item -> item.prodId to -11000L+i }).toMap()
     return items.map { item ->
         val value = rank[item.prodId] ?: if (item.tail.f7.toInt() < -1000) 0L else item.tail.f7
         item.copy(tail = item.tail.copy(f7 = value and 0xFFFFFFFFL))

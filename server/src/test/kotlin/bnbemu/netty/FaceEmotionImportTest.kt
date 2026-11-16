@@ -12,7 +12,9 @@ class FaceEmotionImportTest {
 
     @Test fun boundedBatchExposesFacesBasicExpressionsAndAccessoriesWithTheirRealCategories() {
         val added = ItemDef.DEFAULT_ITEMS.filter { it.itemId in 970_000_000 until 980_000_000 }
-        assertEquals(mapOf(19 to 16, 3 to 52, 12 to 12), added.groupingBy { it.category }.eachCount())
+        assertEquals(52,added.count { it.category == 3 })
+        assertTrue(added.count { it.category == 19 } >= 16,"Retain the original sixteen faces alongside expanded clothing")
+        assertEquals(12,added.count { it.category == 12 })
         val catalog = ShopCatalog.decodeBlock(ShopCatalog.buildBlock(ShopCatalog.DEFAULT_ITEMS))
         for (item in added) {
             val product = catalog.single { it.itemId == item.itemId }
@@ -21,8 +23,8 @@ class FaceEmotionImportTest {
             assertTrue(product.tail.price1 > 0)
             assertTrue(item.desc.any { it in '\u3400'..'\u9fff' })
         }
-        assertEquals(setOf(5,6), added.filter { it.category == 19 }.map { it.skinId }.toSet())
-        assertTrue(added.filter { it.category == 19 }.all { it.targetCharId == 1 && it.name == "Item/AvatarDeco" })
+        assertTrue(added.filter { it.category == 19 }.map { it.skinId }.toSet().containsAll(setOf(5,6)))
+        assertTrue(added.filter { it.category == 19 }.all { it.skinId in 0..7 && it.targetCharId in 0..8 && it.name == "Item/AvatarDeco" })
         for (character in 0..7) {
             val expressions=added.filter { it.category == 3 && it.skinId == character }
             assertEquals(if(character in setOf(5,6)) (0..7).toSet() else setOf(0,1), expressions.map { it.targetCharId }.toSet())

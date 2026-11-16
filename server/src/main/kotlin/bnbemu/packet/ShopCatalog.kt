@@ -234,7 +234,7 @@ object ShopCatalog {
      * 组装条目列表并加密为 SSD 格式 (每 DWORD LE 读取 ^ 0x96CA5395 按 BE 写回)
      */
     fun encode(items: List<ShopItemEntry>): ByteArray {
-        return ssdEncode(buildBlock(items))
+        return ssdEncode(compressLargeSsd(buildBlock(items)))
     }
 
     /**
@@ -251,7 +251,7 @@ object ShopCatalog {
         var productId = 90_000_000
         ItemDef.DEFAULT_ITEMS.sortedBy { it.itemId }
             .filter { it.itemId !in listed && (it.category in setOf(10, 12, 14, 18, 29) ||
-                it.category in setOf(3, 19) && it.itemId in 970_000_000 until 980_000_000) }
+                it.category in setOf(3, 19) && it.itemId in 970_000_000 until 990_000_000) }
             .forEach { definition ->
                 val template = templates[definition.category]?.firstOrNull() ?:
                     if (definition.category in setOf(3,19)) templates[12]?.firstOrNull() else null
@@ -291,7 +291,7 @@ object ShopCatalog {
      * 计算并缓存当前商城目录在客户端 fxstock.ini 对应的校验哈希 (CheckRevision)
      */
     val CATALOG_HASH: Int by lazy {
-        val block = buildBlock(DEFAULT_ITEMS)
+        val block = compressLargeSsd(buildBlock(DEFAULT_ITEMS))
         val bLen = (block[1].toInt() and 0xFF) or ((block[2].toInt() and 0xFF) shl 8) or
             ((block[3].toInt() and 0xFF) shl 16)
         adler32Zero(block, 5, bLen)

@@ -64,17 +64,17 @@ fun ByteBuf.decodeEquipChange(): EquipChange? {
 
 val ChangeEquipReq = PKTHandler { c ->
     val change = decodeEquipChange() ?: return@PKTHandler
-    val user = c.users.firstOrNull() ?: return@PKTHandler
     if (change.slotIndex !in 0..1) return@PKTHandler
+    val user = c.users.getOrNull(change.slotIndex) ?: return@PKTHandler
     try {
         val oldNamePlate = bnbemu.server.localNamePlateStyle(user)
-        bnbemu.server.LocalShop.store.changeEquipment(user.accountKey, change.slotIndex,
+        bnbemu.server.LocalShop.store.changeEquipment(user.accountKey, 0,
             change.items.map { it.equipSlot to it.itemId })
         if (oldNamePlate != bnbemu.server.localNamePlateStyle(user)) c.send(
-            bnbemu.packet.UserMapInfo(bnbemu.packet.localUserMapEntry(user)),
+            bnbemu.packet.UserMapInfo(users=c.users.map {bnbemu.packet.localUserMapEntry(it)}),
             bnbemu.packet.SessionList(bnbemu.server.LocalPlayers.sessionEntries(c))
         )
-        if (change.slotIndex == 0 && change.items.isNotEmpty())
+        if (change.items.isNotEmpty())
             bnbemu.server.Room.refreshWaitingAppearance(user)
         println("[LocalEquipment] inventory=${change.slotIndex} changes=${change.items.size}")
     } catch (e: java.io.IOException) {

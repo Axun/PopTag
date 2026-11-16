@@ -32,17 +32,17 @@ fun Unk113() = PKT {
 }
 
 // ---- op 100 房间设置版 (78B) / 游戏开始版 (77B) — 两版仅 1 处字节差 ----
-fun PracticeRoomInfo(bombStyle: Int = 0, user: User? = null) = PKT { encodePracticePlayerInfo(EN_OP100_ROOM, bombStyle, user) }
-fun PracticeStartInfo(bombStyle: Int = 0, user: User? = null) = PKT { encodePracticePlayerInfo(EN_OP100_START, bombStyle, user) }
+@JvmOverloads fun PracticeRoomInfo(bombStyle: Int = 0, user: User? = null, slot: Int = 0) = PKT { encodePracticePlayerInfo(EN_OP100_ROOM, bombStyle, user,slot) }
+@JvmOverloads fun PracticeStartInfo(bombStyle: Int = 0, user: User? = null, slot: Int = 0) = PKT { encodePracticePlayerInfo(EN_OP100_START, bombStyle, user,slot) }
 
-private fun SendPacketBase.encodePracticePlayerInfo(blob: ByteArray, bombStyle: Int, user: User?) {
+private fun SendPacketBase.encodePracticePlayerInfo(blob: ByteArray, bombStyle: Int, user: User?, slot: Int) {
     // op100 includes the room member's identity. A captured ID/name prevents a
     // renamed account from identifying itself as chief, disabling room controls.
     val marker = byteArrayOf(0xa5.toByte(), 0x6d) + SESSION_STRING
     val nameOffset = (5 until blob.size - marker.size).first { start ->
         marker.indices.all { blob[start + it] == marker[it] }
     }
-    EncodeBuffer(blob.copyOfRange(0, 1))
+    if(slot==0) EncodeBuffer(blob.copyOfRange(0, 1)) else Encode1(slot)
     Encode4(user?.id ?: CAPTURE_USER_ID)
     // PSlotUserInfo::Read (44A793) decrypts three metadata bytes just
     // before the name. The final byte is color (low five bits); replaying
@@ -50,14 +50,19 @@ private fun SendPacketBase.encodePracticePlayerInfo(blob: ByteArray, bombStyle: 
     val color = user?.takeIf { Room.localGameMode in listOf(0, 15) }?.let { owner ->
         Room.slots.firstOrNull { it.user === owner }?.color?.toInt()
     }
-    if (color == null) EncodeBuffer(blob.copyOfRange(5, nameOffset)) else {
+    // AI battle needs the same local map-script controller as practice.
+    // Preserve its native team byte instead of applying the practice color rule.
+    val mapScriptController = Room.localGameMode in listOf(0, 15, 16) &&
+        slot==0 && user != null && Room.slots.any { it.user === user }
+    if (color == null && !mapScriptController && slot==0) EncodeBuffer(blob.copyOfRange(5, nameOffset)) else {
         EncodeBuffer(blob.copyOfRange(5, nameOffset - 3))
         // 68848D tests bit1 of metadata[0] to elect the local map-script
         // controller. The captured START packet clears it (4 vs room's 6).
         val encodedMeta = ((blob[nameOffset-3].toInt() and 255) shl 8) or (blob[nameOffset-2].toInt() and 255)
-        val meta = encodedMeta xor 0xa569
-        Encode2(meta or 2)
-        Encode1(color.coerceIn(0, 8))
+        val meta = (encodedMeta xor 0xa569).let {if(slot==0) it else it and 6.inv()}
+        Encode2(if (mapScriptController) meta or 2 else meta)
+        if (color == null) EncodeBuffer(blob.copyOfRange(nameOffset - 1, nameOffset))
+        else Encode1(color.coerceIn(0, 8))
     }
     val token = user?.let { encodeName(it.name) } ?: SESSION_STRING
     Encode2(token.size)
@@ -140,7 +145,10 @@ internal fun SendPacketBase.encodeAppearanceDefinitions(definitions: List<ItemDe
 // PSlotAccessory::Read (0x44A9FB) reads the avatar array AFTER the bomb
 // style. Faces/clothes (category 19) are separate from character decorations.
 internal fun SendPacketBase.encodeAvatarDefinitions(definitions: List<ItemDefEntry>) {
-    val avatars = definitions.filter { it.category == 19 && it.skinId in -2..7 && it.targetCharId in 0..8 && it.param >= 0 }
+    // Native 457E85 names parts 10/11 as Axx_21 / Axx_41 (classic
+    // clothes/hats). They are not the ordinary part*10 naming scheme.
+    val avatars = definitions.filter { it.category == 19 && it.skinId in -2..7 &&
+        (it.targetCharId in 0..8 || it.targetCharId in 10..11) && it.param >= 0 }
     Encode1(avatars.size)
     avatars.forEach { Encode4(it.skinId); Encode4(it.targetCharId); Encode4(it.param) }
 }

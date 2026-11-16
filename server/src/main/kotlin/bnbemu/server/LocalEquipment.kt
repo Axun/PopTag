@@ -56,7 +56,7 @@ fun localUserInventory(user: User?, practice: Boolean = false, inGame: Boolean =
                 if (it.slot == 15) UserInventoryEntry(character + 1, slot = 15, param = 20,
                     token = names[character], expireDate = ByteArray(8), status = 192) else it
             }
-            localInventoryEntries(LocalShop.store.account(owner.accountKey), inventory, selectedDefaults)
+            localInventoryEntries(LocalShop.store.account(owner.accountKey), 0, selectedDefaults)
         }
     }
 )
@@ -95,8 +95,10 @@ fun matchSupplyEntries(mode: Int = Room.localGameMode): List<UserInventoryEntry>
  * (FindOwnedItemById 闸门) 的前置条件。quantity 即道具栏堆叠数。
  * 只发 slotType=0 (第一玩家); 第一轮成对发 0/1 的写法保留待 2P 实测后再启用。
  */
-fun needleStockPackets() = matchSupplyEntries().filter { it.slot == 255 }.map {
-    UserItemUpdate(slotType = 0, itemId = it.itemId, quantity = needleCount(), expireHours = 0, flag1 = 255, flag2 = 0)
+@JvmOverloads fun needleStockPackets(playerCount: Int = 1) = (0 until playerCount.coerceIn(1,2)).flatMap { player ->
+    matchSupplyEntries().filter { it.slot == 255 }.map {
+        UserItemUpdate(slotType = player, itemId = it.itemId, quantity = needleCount(), expireHours = 0, flag1 = 255, flag2 = 0)
+    }
 }
 
 /** The EN slot accessory packet carries resource indexes, not owned item ids. */

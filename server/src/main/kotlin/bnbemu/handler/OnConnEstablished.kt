@@ -20,19 +20,42 @@ import bnbemu.packet.PermissionInfo
 import bnbemu.packet.ChangeStage
 import bnbemu.server.User
 import java.net.InetSocketAddress
+import io.netty.buffer.ByteBuf
+
+internal data class LocalChannelMember(val name: String,val userId: Int)
+
+/** EN C7: count, repeated (name,id,E4,8 opaque bytes), then 11 shared bytes. */
+internal fun ByteBuf.decodeLocalChannelMembers(): List<LocalChannelMember>? {
+    val start=readerIndex()
+    return try {
+        val count=Decode1
+        if(count !in 1..2) {readerIndex(start);return null}
+        val members=List(count) {
+            val name=DecodeCipherStr
+            val id=Decode4
+            Decode4
+            skipBytes(8)
+            LocalChannelMember(name,id)
+        }
+        // Read all records and the common suffix before creating any users.
+        skipBytes(11)
+        members
+    } catch (_:IndexOutOfBoundsException) {readerIndex(start);null}
+}
 
 // 進頻道後第一個包
 // server = CConnectPool::OnConnEstablished | CMainPool::OnConnEstablished
 val OnConnEstablished = PKTHandler { c ->
-    val port = (c.ch.localAddress() as InetSocketAddress).port
+    val port = (c.ch.localAddress() as? InetSocketAddress)?.port ?: 3838
     val inGameServer = port == 4848
     val inShop = port == 4849
 
-    val userCount = Decode1
+    val enMembers=if(isEN) decodeLocalChannelMembers() ?: return@PKTHandler else null
+    val userCount = enMembers?.size ?: Decode1
     if (userCount in 1..2) {
         repeat(userCount) { i ->
-            val name = if (isEN) DecodeCipherStr else DecodeStr
-            val userId = Decode4
+            val name = enMembers?.get(i)?.name ?: DecodeStr
+            val userId = enMembers?.get(i)?.userId ?: Decode4
             val passportAccount = bnbemu.netty.PassportServer.ACCOUNTS.values.firstOrNull { it.userId == userId }
 
             if (isTW) {
@@ -48,7 +71,7 @@ val OnConnEstablished = PKTHandler { c ->
 
             c.users.add(
                 User(c, userId, if (isEN) passportAccount?.charName ?: name else name,
-                    accountKey = passportAccount?.username ?: bnbemu.netty.PassportServer.lastAccount.username)
+                    accountKey = passportAccount?.username ?: if(isEN) name else bnbemu.netty.PassportServer.lastAccount.username)
             )
         }
 

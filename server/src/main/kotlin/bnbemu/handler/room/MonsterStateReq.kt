@@ -51,9 +51,7 @@ val MonsterFinishReq = PKTHandler { c ->
     if (Room.uniqueClients.none { it === c } || readableBytes() != 4) return@PKTHandler
     val objectId = Decode2
     val reportedSlot = Decode2
-    val senderSlot = Room.slots.indexOfFirst { it.user?.c === c }
-    // Native GetPlayerIndex can remain -1 in the local monster scene.
-    if (reportedSlot != 65535 && reportedSlot != senderSlot) return@PKTHandler
+    val senderSlot = Room.resolveHumanSlot(c,reportedSlot) ?: return@PKTHandler
     Room.onMonsterFinish(objectId, senderSlot)
 }
 

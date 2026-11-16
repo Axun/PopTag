@@ -137,7 +137,9 @@ class LocalRecoveryTest {
             ((block[3].toInt() and 255) shl 16)
         assertEquals(block.size - 5, length)
         assertEquals(large, ShopCatalog.decodeBlock(block))
-        val actual = ShopCatalog.buildBlock(expanded)
+        // The native SSD reader hashes the incoming compression flag and wire
+        // payload before inflating, not the reconstructed uncompressed table.
+        val actual = bnbemu.packet.compressLargeSsd(ShopCatalog.buildBlock(expanded))
         assertEquals(ShopCatalog.adler32Zero(actual, 5, actual.size - 5), ShopCatalog.CATALOG_HASH)
         assertTrue(expanded.any { ShopCatalog.appearanceKey(it) == "bubble:45" })
     }

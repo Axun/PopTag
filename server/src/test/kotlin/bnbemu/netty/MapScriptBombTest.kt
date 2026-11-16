@@ -11,13 +11,17 @@ import io.netty.channel.embedded.EmbeddedChannel
 
 class MapScriptBombTest {
     @Test fun actualC133DispatchCreatesAResponseOnTheActivePangLandBoard() {
+        for(mode in listOf(0,15,16)) dispatchPangLandBomb(mode)
+    }
+
+    private fun dispatchPangLandBomb(mode: Int) {
         OpcodeManager.recvOps
         val socket=ClientSocket();val channel=EmbeddedChannel(socket)
         val user=User(socket,91005,"sprinkler-real-wire-test")
         val oldMode=Room.localGameMode
         val saved=Room.slots.map { Triple(it.user,it.isAI,it.meta.copyOf()) }
         try {
-            Room.reset();Room.localGameMode=15
+            Room.reset();Room.localGameMode=mode
             Room.slots.forEach { it.user=null;it.isAI=false }
             socket.users.add(user);Room.slots[0].user=user
             val map=bnbemu.handler.room.mapIdTable.entries.first { it.value.name=="PangLand15" }.key

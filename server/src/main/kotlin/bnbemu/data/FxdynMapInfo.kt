@@ -68,14 +68,17 @@ object FxdynMapInfo {
         val stream = FxdynMapInfo::class.java.getResourceAsStream("/data/local-map-expansion.json")
             ?: error("Missing verified local map expansion")
         val additions = stream.use { parseRecords(it.bufferedReader(StandardCharsets.UTF_8).readText()) }
-        check(additions.size == 75)
-        check(additions.none { extra -> records.any { it.name == extra.name || it.id == extra.id } })
+        check(additions.size == 98)
+        // Tomb12 also has legacy hidden flag-1/4 entries; its new flag-0
+        // playable record must not replace or renumber those captured records.
+        check(additions.none { extra -> records.any { (it.flag == 0 && it.name == extra.name) || it.id == extra.id } })
         val nativeIds = checkNotNull(javaClass.getResourceAsStream("/data/ported-native-map-indices.tsv"))
             .bufferedReader().use { it.readLines() }.associate {
                 val fields = it.split('\t'); fields[1] to fields[0].toInt()
             }
         val virtualPools = setOf("MonSealRandom", "MonTurtleRandom", "MonRobotRandom")
-        check(additions.all { it.name in nativeIds || (it.name in virtualPools && it.subtype == 6 && it.sortOrder == 0) })
+        check(additions.all { it.name in nativeIds || (it.name in virtualPools && it.subtype == 6 && it.sortOrder == 0) ||
+            (it.name == "TombRandom" && it.subtype == 1 && it.stage == "none") })
         (records + additions).map { row -> row.copy(sortOrder = nativeIds[row.name] ?: row.sortOrder) }
     }
     val localizedRecords: List<FxdynRecord> by lazy { gameRecords.map { it.copy(display = LocalChineseNames.map(it)) } }

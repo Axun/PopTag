@@ -5,7 +5,12 @@ import bnbemu.netty.toBA
 import bnbemu.server.User
 
 // 進頻道握手推送 #14 (seq=139, 44B) — 與 ResEstimateRTT 同 op 但為大廳推送版, 原樣重放
-fun Unk20(character: Int = 6, user: User? = null) = PKT {
+@JvmOverloads fun Unk20(character: Int = 6, user: User? = null, users: List<User?>? = null) = PKT {
+    val members=users ?: listOf(user)
+    Encode1(members.size)
+    for(member in members) {
+    val user=member
+    val character=if(users==null) character else user?.selectedBomber ?: 6
     // CStage vtable+0xEC -> 0x4F9485 -> CUserInfoMan::Read(0x6E6109).
     // The captured byte at offset28 resets the selected bomber to Dao/0.
     val data = EN_UNK20_BLOB.copyOf()
@@ -21,7 +26,8 @@ fun Unk20(character: Int = 6, user: User? = null) = PKT {
         field(15, 4, user.lucci, 0x96ca5395.toInt())
     }
     data[28] = ((if (character == 10) 4 else character.coerceIn(0, 7)) xor 0x5a).toByte()
-    EncodeBuffer(data)
+    EncodeBuffer(data.copyOfRange(1,data.size))
+    }
 }
 
 private val EN_UNK20_BLOB = """

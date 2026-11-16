@@ -12,6 +12,7 @@ def current_items():
     b=(DATA/'item_def_base.bin').read_bytes();r=Reader(b,8)
     rows=[r.item() for _ in range(struct.unpack_from('<H',b,6)[0])]
     for l in (DATA/'local_extra_items.tsv').read_text(encoding='utf-8-sig').splitlines():
+        if not l.strip():continue
         f=l.split('\t');rows.append(dict(zip(['itemId','category','name','skinId','targetCharId','param','desc','flags','status'],[int(f[0]),int(f[1]),f[2],int(f[3]),int(f[4]),int(f[5]),f[6],int(f[7]),int(f[8])])))
     return rows
 

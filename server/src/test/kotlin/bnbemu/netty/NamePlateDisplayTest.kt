@@ -20,6 +20,8 @@ class NamePlateDisplayTest {
         try {
             val user=User(socket,190019,"nameplate-display-test");socket.users.add(user)
             LocalShop.store.purchase(user.accountKey,ShopItemEntry(1,18,"test",itemId=2459,tail=ShopItemTail(price1=1)))
+            // Repeated runs must begin unequipped, even with a persisted test account.
+            LocalShop.store.changeEquipment(user.accountKey,0,listOf(231 to 0))
             SendPacketBase(request,3).apply { Encode1(5);Encode1(0);Encode2(1);Encode1(231);Encode4(2459) }
             ChangeEquipReq.run { request.handle(socket) }
             assertEquals(19,localUserMapEntry(user).v8)

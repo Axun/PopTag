@@ -143,7 +143,7 @@ object ItemDef {
      * (每 DWORD LE 读取 ^ 0x96CA5395 按 BE 写回, 尾部不足 4B 按 LE 读 ^ 0xA569 按 BE 写回 / ^ 0x5A)
      */
     fun encode(items: List<ItemDefEntry>): ByteArray {
-        val plain = buildBlock(items)
+        val plain = compressLargeSsd(buildBlock(items))
         val out = ByteArray(plain.size)
         var i = 0
         while (i + 4 <= plain.size) {

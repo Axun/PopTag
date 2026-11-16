@@ -21,8 +21,8 @@ fun PracticeSlotReady(slot: Int, state: Int = 2) = PKT {
 }
 
 // ---- op 104 单槽 1B: slot0→0, 其余 (slot<<4)|8 ----
-fun PracticeSlot104(slot: Int) = PKT {
-    Encode1(if (slot == 0) 0 else (slot shl 4) or 8)
+@JvmOverloads fun PracticeSlot104(slot: Int, color: Int? = null) = PKT {
+    Encode1((slot shl 4) or (color?.coerceIn(0,8) ?: if(slot==0) 0 else 8))
 }
 
 // ---- op 105 单槽 2B: E1(slot) E1(bomber=5) ----

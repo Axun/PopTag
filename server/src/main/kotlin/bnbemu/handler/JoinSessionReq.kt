@@ -53,15 +53,16 @@ val JoinSessionReq = PKTHandler { c ->
         UserDynamicInfo(0, lucci), FxConfig(), DynamicMapInfo(),
         RoomList(emptyList()), ShopCatalog(),
         Unk204(), Unk66(), ChannelsGameState(tailOnes = 2),
-        Unk20(user?.selectedBomber ?: 6, user), ShopVersion(), Unk247(), Unk423(),
+        Unk20(user?.selectedBomber ?: 6, user,users=c.users), ShopVersion(), Unk247(), Unk423(),
         JoinSessionResult(bnbemu.server.LocalPlayers.rosterEntries(c)), SessionList(bnbemu.server.LocalPlayers.sessionEntries(c)),
     )
-    c.users.firstOrNull()?.let { user ->
+    if(c.users.size==2) c send UserInventoryInfo(slot=1)
+    c.users.take(2).forEachIndexed { index,user ->
         bnbemu.server.LocalShop.store.account(user.accountKey).items.forEach { (id, count) ->
-            c send UserItemUpdate(itemId = id, quantity = count)
+            c send UserItemUpdate(slotType=index,itemId = id, quantity = count)
         }
-        c send bnbemu.server.localUserInventory(user)
     }
+    c.users.firstOrNull()?.let {c send bnbemu.server.localUserInventory(it)}
 
     bnbemu.server.LocalCrashProbe.onJoined(c)
 }

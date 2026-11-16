@@ -27,11 +27,14 @@ val StageInitReq = PKTHandler { c ->
     bnbemu.server.Room.cancelPendingReturn()
     c.send(
         Unk310(), Unk302(),
-        UserMapInfo(c.users.firstOrNull()?.let(::localUserMapEntry)),
+        UserMapInfo(users=c.users.map(::localUserMapEntry)),
         SessionList(bnbemu.server.LocalPlayers.sessionEntries(c)),
         Unk293(), QuestConfigTable(),
-        UserSimpleInfoResult(), SessionInfoResult(),
-        MyPageInfo(), ItemDef(),
+        UserSimpleInfoResult(), SessionInfoResult(c.users),
+        MyPageInfo(
+            session=c.users.firstOrNull()?.let {bnbemu.packet.encodeName(it.name)} ?: bnbemu.packet.SESSION_STRING,
+            users=c.users.mapIndexed {index,user ->bnbemu.packet.MyPageUser(index,user.id,bnbemu.packet.encodeName(user.name))}
+        ), ItemDef(),
         Unk310(), Unk302(),
     )
 }

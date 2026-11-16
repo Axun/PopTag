@@ -35,6 +35,7 @@ import bnbemu.server.*
 // server = C???::OnCreatePracticeSession (原始名称未知, 绑定见 EN_18_recv.yaml)
 val CreatePracticeSessionReq = PKTHandler { c ->
     val request = decodeLocalRoomRequest() ?: return@PKTHandler
+    if(request.characters.size != c.users.size.coerceAtMost(2)) return@PKTHandler
     // A new room must also stop the previous match and clear its running flag.
     Room.reset()
     Room.localGameMode = request.gameMode
@@ -75,33 +76,41 @@ val CreatePracticeSessionReq = PKTHandler { c ->
         }
     }
 
+    // The second local player is a human seat on the same connection, never AI.
+    c.users.getOrNull(1)?.let { second ->
+        Room.slots[1].apply {
+            user=second;isAI=false;state=0;bomber=second.selectedBomber;color=0
+        }
+    }
+
     c.send(
         RoomList(emptyList()),
         SessionSimpleInfo(gameMode = request.gameMode),
-        UserSimpleInfoResult(), SessionInfoResult(),
+        UserSimpleInfoResult(), SessionInfoResult(c.users),
         Unk113(),
         PracticeRoomInfo(bombStyle = localBombStyle(player), user = player),
         bnbemu.packet.room.SelectMap(themeId = Room.themeId, mapId = Room.mapId),
     )
+    c.users.getOrNull(1)?.let {c send PracticeRoomInfo(localBombStyle(it),it,slot=1)}
     // 106×8 (sq=208~229)
     repeat(8) { slot ->
-        c.send(PracticeSlotReady(slot, if (slot == 0 || Room.slots[slot].isAI) 2 else if (request.gameMode == 0) 0 else 1))
+        c.send(PracticeSlotReady(slot, if (Room.slots[slot].user != null || Room.slots[slot].isAI) 2 else if (request.gameMode == 0) 0 else 1))
     }
     // 每槽交错发送 [114, 104, 105, 103] (槽 7 无 103), 与真实线序一致
     repeat(8) { slot ->
-        if (slot != 0 && !Room.slots[slot].isAI) {
+        if (Room.slots[slot].user == null && !Room.slots[slot].isAI) {
             return@repeat   // 练习/怪物模式: 仅玩家槽位, 其余关闭
         }
         c.send(
-            PracticeSlot114(slot, if (slot == 0) player?.selectedBomber ?: 6 else request.aiCharacter(slot)),
-            PracticeSlot104(slot),
+            PracticeSlot114(slot, Room.slots[slot].user?.selectedBomber ?: request.aiCharacter(slot)),
+            PracticeSlot104(slot,Room.slots[slot].user?.let { Room.slots[slot].color.toInt() }),
         )
         // The NPC strategy refreshes labels on op103, after reading the role.
-        c.send(PracticeSetPlayer(slot, if (slot == 0) player?.selectedBomber ?: 6 else request.aiCharacter(slot)))
+        c.send(PracticeSetPlayer(slot, Room.slots[slot].user?.selectedBomber ?: request.aiCharacter(slot)))
         if (request.gameMode == 16 && slot >= 4)
             c.send(PracticeSlot103(slot, isAI = true, aiLevel = 0, flag = 4))
     }
-    bnbemu.server.needleStockPackets().forEach { c send it }   // 先建持有物, op198 热键穿戴的前置
+    bnbemu.server.needleStockPackets(c.users.size).forEach { c send it }   // 先建持有物, op198 热键穿戴的前置
     c.send(localUserInventory(player, practice = true))
     if (request.gameMode == 16) c send bnbemu.packet.NpcAvailability()
     c.send(PracticeUnk423())

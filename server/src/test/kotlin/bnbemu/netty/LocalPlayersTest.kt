@@ -10,6 +10,13 @@ import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 
 class LocalPlayersTest {
+    @Test fun localPlayerSlotsFollowLoginOrderAndHideHistoricalAliases() {
+        val first=LocalPlayerRecord("one","潜在游鱼",9616)
+        val second=LocalPlayerRecord("two","半身王子",22918)
+        val history=listOf(second,first,first.copy(accountKey="old-test-alias"),LocalPlayerRecord("third","第三人",30001))
+        assertEquals(listOf(first,second,history.last()),localPlayerDisplayEntries(listOf(first,second),history))
+        assertEquals(listOf(second,first,history.last()),localPlayerDisplayEntries(listOf(second,first),history))
+    }
     @TempDir lateinit var directory: Path
     @Test fun loginHistoryStartsEmptyPersistsChineseNamesAndUpdatesWithoutDuplicates() {
         val path=directory.resolve("history/players.properties")

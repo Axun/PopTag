@@ -11,20 +11,25 @@ import bnbemu.packet.UserInfoResult
 import bnbemu.server.Room
 import bnbemu.server.bomber
 
-private val LAST_USER_INFO_SEND_TIME = AttributeKey.valueOf<Long>("LAST_USER_INFO_SEND_TIME")
+private val LAST_USER_INFO_SEND_TIMES = listOf(
+    AttributeKey.valueOf<Long>("LAST_USER_INFO_SEND_TIME"),
+    AttributeKey.valueOf<Long>("LAST_USER_INFO_SEND_TIME_2P")
+)
 
 /**
  * 下发用户详细资料与动态属性 (支持时间防抖 500ms)
  */
 fun sendUserInfo(c: ClientSocket, slotIndex: Int = 0) {
+    if(slotIndex !in 0..1) return
+    val user=c.users.getOrNull(slotIndex) ?: if(slotIndex==0) c.users.firstOrNull() else return
+    val timeKey=LAST_USER_INFO_SEND_TIMES[slotIndex]
     val now = System.currentTimeMillis()
-    val last = c.ch.attr(LAST_USER_INFO_SEND_TIME).get() ?: 0L
+    val last = c.ch.attr(timeKey).get() ?: 0L
     if (now - last < 500) {
         return
     }
-    c.ch.attr(LAST_USER_INFO_SEND_TIME).set(now)
+    c.ch.attr(timeKey).set(now)
 
-    val user = c.users.firstOrNull()
     // 2026-11-07 账号即玩家名: 优先用本会话登录名 (LoginReq 的账号), passport 全局账户仅作兜底。
     val charName = user?.name?.takeIf { it.isNotBlank() }
         ?: PassportServer.lastAccount.charName.takeIf { it.isNotBlank() }
@@ -32,14 +37,14 @@ fun sendUserInfo(c: ClientSocket, slotIndex: Int = 0) {
     val lucci = user?.lucci ?: bnbemu.server.LocalEconomy.startingGold
 
     // 先同步客户端 Lucci 动态属性 (CUserDynamicInfo.propertyId[0])
-    c send UserDynamicInfo(0, lucci)
+    c send UserDynamicInfo(slotIndex, lucci)
 
     // 安全约束: CMyPageDialog 仅分配 2 个槽位 (0=自己, 1=对比目标), 必须在 0..1 范围内,
     // 超过 1 会在 0x67973E ([0x009E06C0 + slotIndex * 0x438]) 发生堆越界导致 0xC0000005 崩溃闪退
     val safeSlotIndex = slotIndex.coerceIn(0, 1)
 
     // 根据当前槽位选中的角色动态配置角色卡与装扮
-    val userSlot = Room.slots.find { it.user?.c == c }
+    val userSlot = Room.slots.find { it.user === user }
     val currentBomber = userSlot?.bomber?.toInt() ?: user?.selectedBomber ?: 6
     val charItemId = if (currentBomber == 10) 2082 else currentBomber.coerceIn(0, 7) + 1
     val equips = listOf(
@@ -144,11 +149,12 @@ val UserInfoReq = PKTHandler { c ->
     val bomberIds = (0 until count).map { Decode1 }
 
     // 客户端上报的是各槽位已选角色 ID (bomberIds), 同步更新对应槽位角色
-    val userSlot = Room.slots.find { it.user?.c == c }
-    val selected = bomberIds.firstOrNull()?.takeIf { it in 0..7 || it == 10 }
-    if (selected != null) {
-        c.users.firstOrNull()?.selectedBomber = selected
-        userSlot?.bomber = selected
+    bomberIds.take(2).forEachIndexed { index, selected ->
+        val user=c.users.getOrNull(index) ?: return@forEachIndexed
+        if(selected in 0..7 || selected==10) {
+            user.selectedBomber=selected
+            Room.slots.firstOrNull {it.user===user}?.bomber=selected
+        }
     }
 }
 

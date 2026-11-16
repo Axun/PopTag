@@ -3,6 +3,7 @@ package bnbemu.packet.room
 import bnbemu.netty.PKT
 import bnbemu.server.Room
 import bnbemu.server.LocalEconomy
+import bnbemu.server.color
 
 // S→C GameResult (Opcode 150 in EN / CA.exe 0x00559854)
 // 结构 (约 119 字节):
@@ -57,7 +58,8 @@ fun GameResult(
             // Both battle and stage-clear rows use the same native result enum.
             // 0=win, 1=draw, 2=loss; native 0x53F534 -> 0x53358E ->
             // 0x559239 (CGOLoseGlyph). Verified with isolated native execution.
-            Encode1(if (winnerTeam == 0) 0 else 2)
+            val won=if(Room.localGameMode==0) slot.color.toInt()==winnerTeam else winnerTeam==0
+            Encode1(if (won) 0 else 2)
             Encode1(0)
             Encode1(0)
             Encode1(0)

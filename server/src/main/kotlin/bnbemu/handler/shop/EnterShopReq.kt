@@ -18,7 +18,10 @@ import bnbemu.packet.EnterShopStage
  *   2. 下发 S->C op 17 EnterShopStage() 触发客户端切换至 CShopStageNew (Stage 14)
  */
 val EnterShopReq = PKTHandler { c ->
-    val tab = Decode1
+    // The 1P/2P chooser sends the selected local player, not a product tab.
+    val playerIndex = Decode1
+    if(playerIndex !in c.users.indices) return@PKTHandler
+    c.shopPlayerIndex=playerIndex
     c send EnterShopResult(success = true)
     c send EnterShopStage()
 }

@@ -119,8 +119,8 @@ object Room {
     // Never reinitialize inventories or inject prepare packets into a live game.
     fun refreshWaitingAppearance(user: User): Boolean {
         val index = slots.indexOfFirst { it.user === user }
-        if (matchRunning || index != 0) return false
-        BC(bnbemu.packet.PracticeRoomInfo(localBombStyle(user), user),
+        if (matchRunning || index < 0) return false
+        BC(bnbemu.packet.PracticeRoomInfo(localBombStyle(user), user,slot=index),
             bnbemu.packet.PracticeSetPlayer(index, user.selectedBomber))
         return true
     }
@@ -287,8 +287,9 @@ object Room {
         if (!definition.type.equals("starFishMon", ignoreCase = true)) return
         val direction = (payload[0].toInt() and 255) xor 0x5a
         val reportedSlot = (payload[17].toInt() and 255) xor 0x5a
-        val slot = slots.indexOfFirst { it.user?.c === client }
-        if (reportedSlot != 255 && reportedSlot != slot) return
+        // One socket can own both local humans. Resolve the reported seat,
+        // rather than rejecting 2P against the socket's first (1P) seat.
+        val slot = resolveHumanSlot(client,reportedSlot) ?: return
         if (direction !in 0..3 || slot !in slots.indices || slots[slot].user?.c !== client) return
         val bounds = LocalMapBounds.forBoard(loadedMonsterStage()?.name.orEmpty()) ?: return
         val coordinates = (0..3).map { java.nio.ByteBuffer.wrap(payload, 1 + it * 4, 4).int xor 0x96CA5395.toInt() }
@@ -306,6 +307,13 @@ object Room {
         response[17] = (slot xor 0x5a).toByte()
         BC(MonsterStageEvent(objectId, 22, encodedPayload = response))
         println("[Monster] Kick id=$objectId slot=$slot reported=$reportedSlot direction=$direction")
+    }
+
+    fun resolveHumanSlot(client: ClientSocket, reported: Int): Int? {
+        val owned=slots.indices.filter {slots[it].user?.c===client}
+        if(reported in owned) return reported
+        // Legacy -1 can identify a single human, but is ambiguous for two.
+        return if(reported in listOf(255,65535) && owned.size==1) owned.single() else null
     }
 
     fun onRobotReady(objectId: Int, phase: Int, hp: Int? = null) {
@@ -806,6 +814,9 @@ object Room {
         // 单座位房 (1 人无 AI) 客户端从第一帧就会满足"只剩一队", 那不是胜负而是没对手;
         // 真正参战的房间至少要有两个座位 (练习房 = 1 真人 + 1..7 AI)
         if (activeSlotCount < 2) return
+        // A room whose two humans chose the same team has no opposing side.
+        if(localGameMode==0 && slots.none {it.isAI} &&
+            slots.filter {it.user!=null}.map {it.color.toInt()}.distinct().size<2) return
 
         val winner = slots[slotId]
         // 空槽上报丢弃: 客户端只会替"真人或 AI"的存活槽位发这个包 (vtable[0x150] == 0 的过滤)
@@ -814,7 +825,8 @@ object Room {
         val humanWin = winner.user != null
         // 落败方一律补记 DEAD, 让 matchState 与服务端认知一致 (客户端本地早就判死了)
         slots.forEach { s ->
-            val sameSide = if (humanWin) s.user != null else s.isAI
+            val sameSide = if(localGameMode==0) s.color.toInt()==winner.color.toInt()
+                else if (humanWin) s.user != null else s.isAI
             if (s.hasSeat() && !sameSide) s.matchState = SlotMatchState.DEAD
         }
 
@@ -836,6 +848,13 @@ object Room {
 
         val humanAlive = humanIdx.filter { slots[it].isAlive }
         val enemyAlive = enemyIdx.filter { slots[it].isAlive }
+
+        if(localGameMode==0) {
+            val initialTeams=humanIdx.map {slots[it].color.toInt()}.distinct()
+            val remainingTeams=humanAlive.map {slots[it].color.toInt()}.distinct()
+            if(initialTeams.size>=2 && remainingTeams.size==1) emitMatchResult(true,humanAlive.first())
+            return
+        }
 
         // 结束条件只有两个: 人类全灭, 或 AI 全灭 (enemyIdx 为空时不存在"AI 全灭"这种胜负)。
         // 这样即使将来开了纯人类 PvP 房, 死一个人也不会被误判成"敌人清空"。
@@ -863,16 +882,16 @@ object Room {
      * 固定顺序 op 169 InitGameResult → op 150 GameResult（客户端 0x55856A → 0x5584CC 建
      * CGameResultDocument，op 150 再填金币/经验并弹窗）。
      */
-    private fun settleEconomy(won: Boolean, boss: Boolean): Map<Int, LocalEconomy.Reward> {
+    private fun settleEconomy(won: Boolean, boss: Boolean, winningTeam: Int? = null): Map<Int, LocalEconomy.Reward> {
         if (economySettled || economyReceipt.isEmpty()) return emptyMap()
         economySettled = true
-        val requested = LocalEconomy.reward(localGameMode, won, boss)
-        if (requested == LocalEconomy.Reward()) return emptyMap()
         val rewards = mutableMapOf<Int, LocalEconomy.Reward>()
         val credited = mutableSetOf<String>()
         slots.forEachIndexed { index, slot ->
             val user = slot.user ?: return@forEachIndexed
             if (!credited.add(user.accountKey.lowercase(java.util.Locale.ROOT))) return@forEachIndexed
+            val requested=LocalEconomy.reward(localGameMode,winningTeam?.let {slot.color.toInt()==it} ?: won,boss)
+            if(requested==LocalEconomy.Reward()) return@forEachIndexed
             try {
                 val before = LocalShop.store.account(user.accountKey)
                 val after = LocalShop.store.reward(user.accountKey, economyReceipt, requested).account
@@ -880,7 +899,8 @@ object Room {
                 val actual = LocalEconomy.Reward(after.lucci - before.lucci, after.totalExperience - before.totalExperience)
                 // Result shows the round award; only the capped actual delta enters the wallet.
                 rewards[index] = LocalEconomy.resultReward(requested, actual)
-                user.c send bnbemu.packet.UserDynamicInfo(0, user.lucci)
+                val localIndex=user.c.users.indexOf(user)
+                if(localIndex in 0..1) user.c send bnbemu.packet.UserDynamicInfo(localIndex, user.lucci)
                 LocalEconomy.walletLimitNotice(requested,actual)?.let { message ->
                     pendingWalletNotices[user.c]=message
                 }
@@ -903,10 +923,11 @@ object Room {
         val generation = roomGeneration.get()
         executor.schedule({
             if (roomGeneration.get() != generation || !gameOverSent) return@schedule
-            val rewards = settleEconomy(humanWin, loadedMonsterStage()?.monsters?.values?.any { it.boss } == true)
+            val winningTeam=if(localGameMode==0) slots[winnerSlot].color.toInt() else null
+            val rewards = settleEconomy(humanWin, loadedMonsterStage()?.monsters?.values?.any { it.boss } == true,winningTeam)
             BC(
                 InitGameResult(mode = 0, mapId = 0),
-                GameResult(winnerTeam = if (humanWin) 0 else 1, delayFrames = 60, rewards = rewards)
+                GameResult(winnerTeam = winningTeam ?: if (humanWin) 0 else 1, delayFrames = 60, rewards = rewards)
             )
             // 结算后停掉对局主循环 (水泡倒计时), 与客户端离开棋盘同步
             endGame()
@@ -995,7 +1016,7 @@ object Room {
     }
 
     fun getBomb(bombId: Int): Bomb? {
-        return bombs.find { it.id == bombId }
+        return synchronized(bombs) {bombs.find { it.id == bombId }}
     }
 
     fun onBombKickThrow(actionSlot: Int, bombId: Int, fromRow: Int, fromColumn: Int, targetRow: Int, targetColumn: Int, duration: Int) {

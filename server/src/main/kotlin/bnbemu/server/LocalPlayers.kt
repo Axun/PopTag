@@ -12,6 +12,13 @@ import java.util.Properties
 
 data class LocalPlayerRecord(val accountKey: String, val name: String, val userId: Int)
 
+internal fun localPlayerDisplayEntries(current: List<LocalPlayerRecord>, history: List<LocalPlayerRecord>): List<LocalPlayerRecord> =
+    (current + history)
+        .distinctBy {it.accountKey.lowercase(Locale.ROOT)}
+        .distinctBy {it.userId}
+        .distinctBy {it.name.lowercase(Locale.ROOT)}
+        .take(11)
+
 /** Login history, not an online-presence list. No passwords or sample accounts. */
 class LocalPlayerHistory(private val path: Path) {
     private val records = linkedMapOf<String,LocalPlayerRecord>()
@@ -48,17 +55,23 @@ class LocalPlayerHistory(private val path: Path) {
 }
 
 object LocalPlayers {
+    private val hiddenPath=Path.of(System.getProperty("bnbemu.accountsDir","data/local-accounts"),"login-history","hidden-accounts.txt")
+    private val hiddenAccounts=if(Files.exists(hiddenPath)) Files.readAllLines(hiddenPath).filter {it.isNotBlank()}.map {it.lowercase(Locale.ROOT)}.toSet() else emptySet()
     private val history=LocalPlayerHistory(Path.of(System.getProperty("bnbemu.accountsDir","data/local-accounts"),"login-history","players.properties"))
-    fun remember(user: User) = history.record(LocalPlayerRecord(user.accountKey,user.name,user.id))
+    fun remember(user: User) {
+        if(user.accountKey.lowercase(Locale.ROOT) !in hiddenAccounts) history.record(LocalPlayerRecord(user.accountKey,user.name,user.id))
+    }
     fun entries(c: ClientSocket): List<LocalPlayerRecord> {
         c.users.forEach(::remember)
-        val current=c.users.map { it.accountKey.lowercase(Locale.ROOT) }.toSet()
         // CUserMap::ReadList (4E086B) has eleven entries per page, although
         // its count is a byte. Retain all history on disk; never overrun that
         // native first-page buffer. Pagination belongs to the multiplayer work.
-        return history.list().sortedBy { if(it.accountKey.lowercase(Locale.ROOT) in current) 0 else 1 }.take(11)
+        // S81's slot indexes must follow the client's 1P,2P order; sorting
+        // both local users into one priority bucket preserves stale history order.
+        val current=c.users.map {LocalPlayerRecord(it.accountKey,it.name,it.id)}
+        return localPlayerDisplayEntries(current,history.list().filter {it.accountKey.lowercase(Locale.ROOT) !in hiddenAccounts})
     }
-    fun sessionEntries(c: ClientSocket): List<SessionEntry> = entries(c).map { e ->
+    fun sessionEntries(c: ClientSocket): List<SessionEntry> = entries(c).filter {it.accountKey.lowercase(Locale.ROOT) !in hiddenAccounts}.map { e ->
         val level=c.users.firstOrNull { it.accountKey.equals(e.accountKey,true) }?.level
             ?: LocalEconomy.progress(LocalShop.store.account(e.accountKey).totalExperience).first
         SessionEntry(e.name,level,listItemBg=localNamePlateStyle(LocalShop.store.account(e.accountKey)))

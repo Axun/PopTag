@@ -78,7 +78,7 @@ fun GameStartMapInfo(
         // Live solo practice also uses the room's selected color. Keep the
         // no-argument captured packet unchanged for protocol replay.
         val team = if (gameOptions == 0 || useSelectedColors && gameOptions == 15)
-            (slot?.color?.toInt() ?: 0).coerceIn(0, 8) else if (i == 0) 0 else 8
+            (slot?.color?.toInt() ?: 0).coerceIn(0, 8) else if (i == 0 || slot?.user != null) 0 else 8
         val spawn = if (i < spawnPositions.size) spawnPositions[i] else i
 
         Encode1(i)

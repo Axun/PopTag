@@ -9,6 +9,7 @@ import bnbemu.netty.PKTHandler
  * - 客户端收到 op 259 EnterShopResult 成功应答后，于 0x005BE70A 构造空包发送给服务端确认。
  */
 val ShopSyncReq = PKTHandler { c ->
-    val user = c.users.firstOrNull() ?: return@PKTHandler
-    c send bnbemu.packet.UserDynamicInfo(0, user.lucci)
+    c.users.take(2).forEachIndexed { index,user ->
+        c send bnbemu.packet.UserDynamicInfo(index,user.lucci)
+    }
 }

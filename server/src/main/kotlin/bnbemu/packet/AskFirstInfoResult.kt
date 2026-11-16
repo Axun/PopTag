@@ -9,8 +9,13 @@ import bnbemu.netty.toBA
 // 2026-11-07 账号即玩家名: op 4 的 4B 会话串会被客户端写进 CSelfInfo (op 7 原样回传
 // 成为 User.name) —— 它就是显示名的源头。现在动态取 passport 已认证的账号名;
 // 未走 passport 时回放抓包串 (行为不变)。
-fun AskFirstInfoResult() = PKT {
-    UserInfo(
+@JvmOverloads fun AskFirstInfoResult(accounts: List<bnbemu.netty.PassportServer.PassportAccount> = emptyList()) = PKT {
+    if (accounts.isNotEmpty()) {
+        UserInfo.EncodeMany(this, accounts.map { account -> UserInfo(
+            userId=account.userId,userId2=account.userId,session=encodeName(account.charName),
+            v2=1,v4=1000,v16=1,v27=1,v31=5000,v32=3
+        ) })
+    } else UserInfo(
         userId = currentUserId(), userId2 = currentUserId(), session = currentSessionToken(),
         v2 = 1, v4 = 1000, v16 = 1, v27 = 1, v31 = 5000, v32 = 3,
     ).Encode(this)
@@ -50,9 +55,10 @@ class UserInfo(
     val v32: Int = 0,
 ) {
     fun Encode(p: SendPacketBase) {
-        p.Encode1(0)
-        p.Encode2(v2)
-        p.Encode1(1)
+        EncodeMany(p,listOf(this))
+    }
+
+    private fun encodeMember(p: SendPacketBase) {
         p.Encode4(v4)
         p.Encode4(userId)
         p.Encode2(0)
@@ -72,9 +78,23 @@ class UserInfo(
         p.Encode1(0)
         p.Encode4(0)
         p.Encode1(0)
+    }
+
+    private fun encodeTail(p: SendPacketBase) {
         p.Encode1(v27)
         repeat(3) { p.Encode1(0) }
         p.Encode2(v31)
         p.Encode1(v32)
+    }
+
+    companion object {
+        // CLoginStage 6220A8 reads count at +3, repeats the member region
+        // 622317..62264A, then reads one shared tail at 622653.
+        fun EncodeMany(p: SendPacketBase, members: List<UserInfo>) {
+            require(members.size in 1..2)
+            p.Encode1(0);p.Encode2(members.first().v2);p.Encode1(members.size)
+            members.forEach {it.encodeMember(p)}
+            members.first().encodeTail(p)
+        }
     }
 }

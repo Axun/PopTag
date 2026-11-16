@@ -12,8 +12,12 @@ class ShopHomeTest {
         val fresh = encoded.filter { it.tail.f7.toInt() in -9999..-1001 }
         val recommended = encoded.filter { it.tail.f7.toInt() <= -10000 }
         assertEquals(6, fresh.size)
-        assertEquals(4, recommended.size)
-        assertEquals(10, (fresh + recommended).map { it.prodId }.distinct().size)
+        assertEquals(7, recommended.size)
+        assertEquals(13, (fresh + recommended).map { it.prodId }.distinct().size)
+        val definitions = ItemDef.DEFAULT_ITEMS.associateBy { it.itemId }
+        val ordered = recommended.sortedBy { it.tail.f7.toInt() }
+        assertEquals(listOf(5021,5022,5025,5026), ordered.take(4).map { definitions.getValue(it.itemId).skinId })
+        assertEquals(listOf(5023,5024,5027), ordered.drop(4).map { definitions.getValue(it.itemId).skinId })
         for (product in fresh + recommended) {
             assertTrue(product.tail.price1 > 0)
             assertNotNull(ItemDef.DEFAULT_ITEMS.find { it.itemId == product.itemId })

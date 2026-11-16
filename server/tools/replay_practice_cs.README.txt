@@ -1,0 +1,1 @@
+Synthetic local integration fixture: reuses the first op7 frame from repository replay_enter_cs.bin, followed by protocol op75 and op92. Not an original packet capture. Default selected map=89. Generated to exercise the local room/game pipeline because the upstream practice fixture was absent.

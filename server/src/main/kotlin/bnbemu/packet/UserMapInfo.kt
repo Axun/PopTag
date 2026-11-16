@@ -53,9 +53,12 @@ fun localUserMapEntry(user: User) = UserMapEntry(
     tail4 = LocalEconomy.progressRatio(user.level,user.exp)
 )
 
-fun UserMapInfo(
-    user: UserMapEntry? = UserMapEntry()
+@JvmOverloads fun UserMapInfo(
+    user: UserMapEntry? = UserMapEntry(),
+    users: List<UserMapEntry?>? = null
 ) = PKT {
+    for(member in users ?: listOf(user)) {
+    val user=member
     if (user == null) {
         Encode1(0)
     } else {
@@ -80,5 +83,12 @@ fun UserMapInfo(
         Encode2(user.s4)
         Encode4(user.tail4)
         Encode1(user.tail1)
+        // Current EN feature 0x2F is enabled (owned-process readback).
+        // 4E0A95..4E0AE1 reads three status bytes INSIDE each self-user
+        // iteration. Omitting them shifts the next user's name and level.
+        // Keep the default legacy captured encoder byte-identical; live callers
+        // supply the complete local-user list, even for a single local player.
+        if(users != null) repeat(3) {Encode1(0)}
+    }
     }
 }
