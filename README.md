@@ -43,3 +43,7 @@ mvn compile exec:java
 - [Ghidra](https://github.com/NationalSecurityAgency/ghidra)、[REA](https://github.com/morluto/rea)、[Capstone](https://www.capstone-engine.org/)、[pefile](https://github.com/erocarrera/pefile)、[Wireshark](https://www.wireshark.org/)、[7-Zip](https://www.7-zip.org/)：分析、验证及打包工具。
 
 游戏程序、美术、音乐及国服素材的权利归原权利人；本项目不将其声明为原创或另行授予其许可。依赖许可保留在JAR的META-INF和runtime/legal中。
+
+## 游戏启动器
+
+[v2026.11.17](https://github.com/Fish0731/PopTag/releases/tag/v2026.11.17) 提供带自动更新的游戏启动器。新玩家下载完整包；已有玩家下载 `PopTagLauncher.exe` 放进游戏根目录。工具源码和发布步骤见 [启动器说明](tools/PopTagUpdater/README.md)。
