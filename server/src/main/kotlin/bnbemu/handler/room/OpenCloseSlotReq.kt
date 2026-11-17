@@ -1,4 +1,4 @@
-package bnbemu.handler.room
+﻿package bnbemu.handler.room
 
 import bnbemu.isEN
 import bnbemu.netty.Decode1
@@ -30,17 +30,19 @@ val OpenCloseSlotReq = PKTHandler { c ->
     if (isEN) {
         val raw = Decode1
         val slotIdx = (raw shr 4) and 0x0F
-        if (slotIdx == 0) return@PKTHandler // Never remove the local player.
-        if (Room.localGameMode in 14..15) {
-            // The shared prepare controller requests its default NPCs on init.
-            // Solo practice and stage-clear monsters must not acquire battle NPCs.
-            if (slotIdx in 4..7) {
-                Room.slots[slotIdx].apply { isAI = false; user = null; state = FLAG_CLOSED }
-                c.send(PracticeSlotReady(slotIdx, 1), PracticeSlot103(slotIdx, false, 0, 0))
-            }
+        val existing = Room.slots.getOrNull(slotIdx) ?: return@PKTHandler
+        // CSlotStage sends C89 and sets stage+0x2f64=2 (native 4F68D7).
+        // Only S106 clears that wait at 4EFD1C..4EFD27, including no-op requests.
+        // Never drop a valid seat request, or select-map/start remain disabled.
+        if (existing.user != null || slotIdx == 0) {
+            c.send(PracticeSlotReady(slotIdx, if (existing.state.toInt() and FLAG_CLOSED != 0) 1 else 0))
             return@PKTHandler
         }
-        if (Room.localGameMode == 16 && slotIdx !in 4..7) return@PKTHandler
+        if (Room.localGameMode in 14..15 || (Room.localGameMode == 16 && slotIdx !in 4..7)) {
+            // These seats do not accept battle NPCs. Reply without changing ownership.
+            c.send(PracticeSlotReady(slotIdx, if (existing.state.toInt() and FLAG_CLOSED != 0) 1 else 0))
+            return@PKTHandler
+        }
         val action = raw and 0x0F
         val isClosing = (action and 1) != 0
 
