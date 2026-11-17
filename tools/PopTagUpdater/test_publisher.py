@@ -6,7 +6,7 @@ class PublisherTests(unittest.TestCase):
  def test_components_allow_skipping_versions_and_reuse_unchanged_assets(self):
   with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as d:
    base=Path(d);root=base/'game'
-   for name in ['client/CA.exe','client/CharTE.idd','server/classes/bnbemu/MainKt.class','runtime/bin/java.exe','server/data/local-accounts/person.properties','logs/server.log']:
+   for name in ['client/CA.exe','client/CharTE.idd','server/classes/bnbemu/MainKt.class','runtime/bin/java.exe','server/Config.yaml','server/EN_18_recv.yaml','server/EN_18_send.yaml','server/data/local-accounts/person.properties','logs/server.log']:
     p=root/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b'old')
    first=prepare(root,'v1.0.0',base/'v1')
    (root/'server/classes/bnbemu/MainKt.class').write_bytes(b'new')
@@ -22,6 +22,12 @@ class PublisherTests(unittest.TestCase):
    self.assertFalse(any('person' in p or 'server.log' in p for p in entries))
    for b in second['bundles']:
     if b['asset'] in old:self.assertEqual(b['sha256'],old[b['asset']]['sha256'])
+ def test_reject_release_missing_login_configuration(self):
+  with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as d:
+   root=Path(d)/'game'
+   for n in ['client/CA.exe','server/classes/bnbemu/MainKt.class','runtime/bin/java.exe']:
+    p=root/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b'test')
+   with self.assertRaises(ValueError):prepare(root,'v1.0.0',Path(d)/'out')
  def test_reject_invalid_publish_targets_and_private_paths(self):
   for path in ['server/data/local-accounts/x','client/NMDATA/account.dat','../x','client/x:ads','logs/server.log']:
    self.assertFalse(allowed(path),path)

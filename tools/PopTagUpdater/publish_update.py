@@ -35,7 +35,7 @@ def prepare(root,version,out,notes=''):
         elif name.startswith('client/'):group='client-core'
         else:group='launcher-support'
         groups.setdefault(group,[]).append((path,{'path':name,'sha256':sha(path),'size':path.stat().st_size}))
-    required=['client/CA.exe','server/classes/bnbemu/MainKt.class','runtime/bin/java.exe']
+    required=['client/CA.exe','server/classes/bnbemu/MainKt.class','runtime/bin/java.exe','server/Config.yaml','server/EN_18_recv.yaml','server/EN_18_send.yaml']
     names={entry['path'] for group in groups.values() for _,entry in group}
     if any(p not in names for p in required):raise ValueError('Not a complete release tree')
     out.mkdir(parents=True)

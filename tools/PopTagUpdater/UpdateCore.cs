@@ -43,6 +43,12 @@ namespace PopTagUpdate {
    }
    if(paths.Count>20000 || total>10000000000L)throw new InvalidDataException("更新体积超出限制");
   }
+  public static void ValidateGameRelease(Manifest m) {
+   Validate(m);
+   var paths=new HashSet<string>(m.bundles.SelectMany(b=>b.files).Select(f=>f.path),StringComparer.OrdinalIgnoreCase);
+   foreach(var p in new[]{"client/CA.exe","server/classes/bnbemu/MainKt.class","runtime/bin/java.exe","server/Config.yaml","server/EN_18_recv.yaml","server/EN_18_send.yaml"})
+    if(!paths.Contains(p))throw new InvalidDataException("发布包缺少必要文件："+p+"；保留现有游戏，请等待作者修正。");
+  }
   static bool ValidHash(string h) { return System.Text.RegularExpressions.Regex.IsMatch(h??"", "^[a-f0-9]{64}$"); }
   public bool Matches(FileEntry f) { var p=Target(f.path);return File.Exists(p)&&new FileInfo(p).Length==f.size&&Hash(p)==f.sha256; }
   public List<Bundle> Needed(Manifest m) { Validate(m);return m.bundles.Where(b=>b.files.Any(f=>!Matches(f))).ToList(); }

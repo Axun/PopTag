@@ -23,7 +23,7 @@ namespace PopTagUpdate {
   readonly Button offline=new Button{Text="离线启动",Width=110};
   readonly Button stop=new Button{Text="关闭本地游戏",Width=120};
   readonly Button rollback=new Button{Text="回滚上次更新",Width=130};
-  bool busy;Manifest available;Release release;
+  bool busy;bool diagnosticServerOnly;Manifest available;Release release;
   Action<string> report;
   public Launcher(string root) {
    engine=new Engine(root);Text="PopTag 本地版 · 启动与更新";Size=new Size(790,450);MinimumSize=new Size(710,380);StartPosition=FormStartPosition.CenterScreen;Font=new Font("Microsoft YaHei UI",10);
@@ -44,7 +44,7 @@ namespace PopTagUpdate {
   }
   void WriteLog(string text){log.AppendText(DateTime.Now.ToString("HH:mm:ss")+"  "+text+Environment.NewLine);status.Text=text.Length>75?text.Substring(0,75)+"…":text;}
   async Task Run(Func<Task> action){if(busy)return;busy=true;foreach(var b in new[]{check,start,offline,stop,rollback})b.Enabled=false;
-   try {await action();}catch(Exception ex){report("未完成："+ex.Message);report("可在网络恢复后重试；完整旧版仍可使用离线启动。若有中断事务请先回滚。");}
+   try {await action();}catch(Exception ex){report("未完成："+ex.Message);report(ex is HttpRequestException || ex is WebException ? "网络检查失败，可使用离线启动；恢复网络后再更新。" : "请查看 logs/server.err.log；若有中断事务请先回滚。账号存档保持不变。");}
    finally{busy=false;foreach(var b in new[]{check,start,offline,stop,rollback})b.Enabled=true;}}
   static HttpClient Client(){ServicePointManager.SecurityProtocol=SecurityProtocolType.Tls12;var c=new HttpClient();c.Timeout=TimeSpan.FromMinutes(20);c.DefaultRequestHeaders.UserAgent.ParseAdd("PopTagUpdater/1.0");c.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");return c;}
   static void ValidateUrl(string url){Uri u;if(!Uri.TryCreate(url,UriKind.Absolute,out u)||u.Scheme!="https"||u.Host!="github.com"||!u.AbsolutePath.StartsWith("/"+Repo+"/releases/download/",StringComparison.OrdinalIgnoreCase)||u.UserInfo!="")throw new InvalidDataException("附件不是指定仓库的HTTPS发布文件");}
@@ -60,7 +60,7 @@ namespace PopTagUpdate {
     if(a==null){report("此发布没有自动更新清单，请先安装完整包。");return;}
     ValidateUrl(a.browser_download_url);
     var data=await ReadSmall(c,a.browser_download_url,8000000);
-    var m=Engine.Json.Deserialize<Manifest>(System.Text.Encoding.UTF8.GetString(data));Engine.Validate(m);
+    var m=Engine.Json.Deserialize<Manifest>(System.Text.Encoding.UTF8.GetString(data));Engine.ValidateGameRelease(m);
     if(m.version!=release.tag_name)throw new InvalidDataException("版本清单与发布标签不一致");
     foreach(var b in m.bundles){var asset=release.assets.SingleOrDefault(x=>x.name==b.asset);if(asset==null||asset.size!=b.size)throw new InvalidDataException("发布附件不完整");ValidateUrl(asset.browser_download_url);}
     var needed=await Task.Run(()=>engine.Needed(m));available=m;
@@ -106,16 +106,22 @@ namespace PopTagUpdate {
    if(OwnedGames().Any()){report("本地游戏已经打开。");return;}
    var java=Path.Combine(engine.Root,"runtime/bin/java.exe");var game=Path.Combine(engine.Root,"client/CA.exe");var classes=Path.Combine(engine.Root,"server/classes").Replace('/','\\');
    if(!File.Exists(java)||!File.Exists(game)||!File.Exists(Path.Combine(classes,"bnbemu/MainKt.class")))throw new IOException("请将启动器放在完整游戏包根目录；当前目录不是完整安装");
+   foreach(var cfg in new[]{"Config.yaml","EN_18_recv.yaml","EN_18_send.yaml"})
+    if(!File.Exists(Path.Combine(engine.Root,"server",cfg)))throw new IOException("服务端配置缺失："+cfg+"；请先更新或重新安装完整包。");
    Process server;
    if(!OwnServer(out server)){
     if(System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(p=>p.Port==3838||p.Port==47611))throw new IOException("其他本地服务占用了游戏端口，请先关闭其他版本");
-    server=Process.Start(new ProcessStartInfo(java,"-cp \""+classes+";"+Path.Combine(engine.Root,"server/lib/*")+"\" bnbemu.MainKt"){WorkingDirectory=Path.Combine(engine.Root,"server"),UseShellExecute=false,CreateNoWindow=true});
+    server=new Process { StartInfo=new ProcessStartInfo(java,"-cp \""+classes+";"+Path.Combine(engine.Root,"server/lib/*")+"\" bnbemu.MainKt"){WorkingDirectory=Path.Combine(engine.Root,"server"),UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true} };
+    var output=Path.Combine(engine.Root,"logs");Directory.CreateDirectory(output);
+    server.OutputDataReceived+=(sender,e)=>{if(e.Data!=null)try{File.AppendAllText(Path.Combine(output,"server.out.log"),e.Data+Environment.NewLine);}catch{}};
+    server.ErrorDataReceived+=(sender,e)=>{if(e.Data!=null)try{File.AppendAllText(Path.Combine(output,"server.err.log"),e.Data+Environment.NewLine);}catch{}};
+    server.Start();server.BeginOutputReadLine();server.BeginErrorReadLine();
     var logs=Path.Combine(engine.Root,"logs");Directory.CreateDirectory(logs);File.WriteAllText(Path.Combine(logs,"server.pid"),server.Id.ToString());
    }
    for(int i=0;i<60;i++){
     if(server.HasExited)throw new IOException("本地服务端启动失败");
     var ports=System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Select(p=>p.Port);
-    if(ports.Contains(3838)&&ports.Contains(47611)){Process.Start(new ProcessStartInfo(game){WorkingDirectory=Path.Combine(engine.Root,"client")});report("游戏已启动。");return;}
+    if(ports.Contains(3838)&&ports.Contains(47611)){if(!diagnosticServerOnly)Process.Start(new ProcessStartInfo(game){WorkingDirectory=Path.Combine(engine.Root,"client")});report(diagnosticServerOnly?"本地服务端就绪，3838/47611均已监听。":"游戏已启动。");return;}
     await Task.Delay(500);
    }
    throw new IOException("服务端准备超时，请关闭本地游戏后重试");
@@ -128,6 +134,13 @@ namespace PopTagUpdate {
      if(buttons.Count!=5||!buttons.Any(b=>b.Text=="离线启动")||!buttons.Any(b=>b.Text=="回滚上次更新"))Environment.Exit(1);
     }
     return;
+   }
+   if(args.Length==2&&args[0]=="--server-test") {
+    try {using(var form=new Launcher(AppDomain.CurrentDomain.BaseDirectory)) {
+     var messages=new List<string>();form.report=s=>messages.Add(s);form.diagnosticServerOnly=true;
+     Task.Run(async()=>await form.Launch()).GetAwaiter().GetResult();
+     File.WriteAllLines(args[1],messages);
+    }}catch(Exception ex){File.WriteAllText(args[1],ex.ToString());Environment.Exit(1);}return;
    }
    if(args.Length==2&&args[0]=="--check-only") {
     try {using(var form=new Launcher(AppDomain.CurrentDomain.BaseDirectory)) {

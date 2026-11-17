@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.IO.Compression;
 using System.Collections.Generic;
@@ -19,7 +19,7 @@ class CoreTests {
  static void Main(string[] args){
   work=Path.GetFullPath(args[0]);Directory.CreateDirectory(work);
   if(args.Length>1) {
-   var published=Path.GetFullPath(args[1]);var parsed=Engine.Json.Deserialize<Manifest>(File.ReadAllText(Path.Combine(published,"update-manifest.json")));Engine.Validate(parsed);
+   var published=Path.GetFullPath(args[1]);var parsed=Engine.Json.Deserialize<Manifest>(File.ReadAllText(Path.Combine(published,"update-manifest.json")));Engine.ValidateGameRelease(parsed);
    var installed=NewRoot();var ie=new Engine(installed);var staged=Path.Combine(installed,"stage");
    foreach(var b in parsed.bundles)ie.Stage(b,Path.Combine(published,b.asset),staged);
    ie.Apply(parsed,staged);
@@ -28,7 +28,7 @@ class CoreTests {
    ie.Rollback();Assert(!File.Exists(Path.Combine(installed,"client/CA.exe")),"cross-language installation rollback");
   }
   var root=NewRoot();var fixture=NewRoot();var e=new Engine(root);Write(root,"client/a.txt","old");Write(root,"server/data/local-accounts/account.properties","coins=123");
-  var m=Make(fixture,new Dictionary<string,string>{{"client/a.txt","new"},{"client/b.txt","added"}});Assert(e.Needed(m).Count==1,"select changed component");
+  var m=Make(fixture,new Dictionary<string,string>{{"client/a.txt","new"},{"client/b.txt","added"}});Assert(e.Needed(m).Count==1,"select changed component");Reject(()=>Engine.ValidateGameRelease(m),"reject game release missing login configuration");
   var stage=Path.Combine(root,"stage");Stage(e,m,fixture,stage);e.Apply(m,stage);
   Assert(File.ReadAllText(Path.Combine(root,"client/a.txt"))=="new","replace changed file");
   Assert(File.ReadAllText(Path.Combine(root,"server/data/local-accounts/account.properties"))=="coins=123","preserve player save");
